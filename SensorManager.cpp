@@ -70,10 +70,10 @@ void SensorManager::schedule(SensorEntry *entry, unsigned long msTimeToScheduleF
 }
 
 void SensorManager::removeEvents(int index) {
-    /*Serial.print("removeEvents(");
-    Serial.print(index);
-    Serial.println(')');*/
-    for (int i = 0; i < events.size();) {
+  /*Serial.print("removeEvents(");
+  Serial.print(index);
+  Serial.println(')');*/
+  for (unsigned int i = 0; i < events.size();) {
     // match the entry address
     if (events[i].argument == sensorEntries + index) events.remove(i);
     else i++;
@@ -108,7 +108,7 @@ struct EEPROMHeader {
   
   EEPROMHeader() {
     memcpy(headerString, EEPROM_HEADER_STRING, sizeof(headerString));
-    version = EEPROM_MAJOR_VERSION << 8 + EEPROM_MINOR_VERSION;  // little endian
+    version = (EEPROM_MAJOR_VERSION << 8) + EEPROM_MINOR_VERSION;  // little endian
     numEntries = 0;
   }
 };

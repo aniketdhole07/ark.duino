@@ -46,6 +46,14 @@ void SensorEntry::packageDataMessage(float data) const {
   Serial.println("}}");
 }
 
+void SensorEntry::packageDataMessage(const char *data) const {
+  Serial.print(F("{\"measurement\":{\"label\":\""));
+  Serial.print(label);
+  Serial.print(F("\",\"datum\":\""));
+  Serial.print(data);
+  Serial.println("\"}}");
+}
+
 void SensorEntry::print(int index) const {
   Serial.print('{');
   

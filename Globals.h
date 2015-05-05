@@ -3,29 +3,31 @@
 #include <Arduino.h>
 #include <avr/eeprom.h>
 
+#define SensorUART Serial3
+
 // voltage against which analog
 extern float ReferenceVoltage;
 #define ReferenceVoltageMultiplier (ReferenceVoltage / 1023.0)  // divide by Arduino ADC max value
 
 // macros for writing status messages in JSON to serial
 #define printFlash(s, type)        \
-  Serial.print(F("{" type ":\'")); \
+  Serial.print(F("{\"" type "\":\"")); \
   Serial.print(F(s));              \
-  Serial.print("\'}");             \
+  Serial.print("\"}");             \
 
 #define printlnFlash(s, type)      \
-  Serial.print(F("{" type ":\'")); \
+  Serial.print(F("{\"" type "\":\"")); \
   Serial.print(F(s));              \
-  Serial.print("\'}\n");           \
+  Serial.print("\"}\n");           \
 
 // Functions with print level built in.  Useful because some can be turned off in release.
 // These could be functions, but we would need overloaded versions for regular string vs. string stored in flash,
 // and Arduino IDE is not friendly to templated functions.
-#define printError(s)     printFlash(s, "error")
+#define printError(s)     printFlash(s,   "error")
 #define printlnError(s)   printlnFlash(s, "error")
-#define printDebug(s)     printFlash(s, "debug")
+#define printDebug(s)     printFlash(s,   "debug")
 #define printlnDebug(s)   printlnFlash(s, "debug")
-#define printStatus(s)    printFlash(s, "status")
+#define printStatus(s)    printFlash(s,   "status")
 #define printlnStatus(s)  printlnFlash(s, "status")
 
 

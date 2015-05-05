@@ -1,4 +1,4 @@
-aggrosensor
+Hypha
 ===========
 
 Sensor configuration and aggregation code.
@@ -19,4 +19,4 @@ Sensor configuration and aggregation code.
 
 ####Temporary Commands for writing to pins
 - {writeD:{pin:14, value:1}}
-- {writeA:{pin:14, value:1}}
+- {writeA:{pin:14, value:255}}

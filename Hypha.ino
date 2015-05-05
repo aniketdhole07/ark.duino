@@ -1,3 +1,4 @@
+
 // Define system header files and standard libraries used by Grbl
 /*#include <avr/io.h>
 #include <avr/pgmspace.h>
@@ -11,13 +12,14 @@
 #include <stdint.h>
 #include <stdbool.h>*/
 
-#include "Globals.h"
-#include "SensorEntry.h"
-#include "SensorManager.h"
-
+//#include <SoftwareSerial.h>
 #include <Wire.h>
 #include <JsonGenerator.h>
 #include <JsonParser.h>
+
+#include "Globals.h"
+#include "SensorEntry.h"
+#include "SensorManager.h"
 
 using namespace ArduinoJson::Parser;
 
@@ -25,13 +27,16 @@ using namespace ArduinoJson::Parser;
 // globals
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// hack for atlas scientific mux board
+const struct SensorEntry *currentSensor = NULL;
+
 // TODO put in ifdef based on board type
-const int A0_PIN_OFFSET = 14;  // arduino uno
+const int A0_PIN_OFFSET = A0;  // arduino uno
 
 SensorManager _manager;
 
 // serial input
-char bufCommand[120];
+char bufCommand[300];
 int ixCommandEnd = 0;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -74,6 +79,7 @@ boolean getPinFromJson(ArduinoJson::Parser::JsonValue jsonValue, char &result)
   return true;
 }
 
+// sets only fields specified; this could cause unexpected behavior of previous values sticking around
 void setEntry(ArduinoJson::Parser::JsonValue &pairs)
 {
   // index is required
@@ -148,12 +154,16 @@ void setEntry(ArduinoJson::Parser::JsonValue &pairs)
 // Example JSON: "{command: {argument1: 1, argument2: '2'}}"
 void processCommand(char *buf)
 {
+  char tmp[300];
+  memcpy(tmp, buf, 300);
+  
   // parses JSON 'inline' by modifying buf
   // the next line can easily cause stack overflow
-  JsonParser<16> parser;
+  JsonParser<24> parser;
   JsonObject root = parser.parse(buf);
   if (!root.success()) {
     printlnError("parsing json");
+    Serial.println(tmp);
     return;
   }
   
@@ -186,7 +196,7 @@ void processCommand(char *buf)
     printlnStatus("setEntry succeeded");
   }
   // example: {writeA: {pin:14, value:0}}
-  else if (!strcmp(cmd, "writeA")) {
+  else if (!strcmp(cmd, "writeA") || !strcmp(cmd, "writeD")) {
     JsonValue jsonPin = param["pin"];
     JsonValue jsonValue = param["value"];
     if (!jsonPin.success() || !jsonValue.success()) {
@@ -203,33 +213,17 @@ void processCommand(char *buf)
     
     // TODO: error check value
     const char *sValue = jsonValue;
+    if (sValue == NULL || sValue[0] == '\0') {
+      printlnError("value missing");
+      return;
+    }
     int value = atoi(sValue);
     
     pinMode(pin, OUTPUT);
-    analogWrite(pin, value);
-  }
-  // TODO: combine digital and analog once they work
-  else if (!strcmp(cmd, "writeD")) {
-    JsonValue jsonPin = param["pin"];
-    JsonValue jsonValue = param["value"];
-    if (!jsonPin.success() || !jsonValue.success()) {
-      printlnError("missing pin or value");
-      return;
-    }
+    if (!strcmp(cmd, "writeD")) digitalWrite(pin, value);
+    else                        analogWrite(pin, value);
     
-    char pin;
-    if (! getPinFromJson(jsonPin, pin)) return;
-    if (pin == -1) {
-      printlnError("pin number bad or missing");
-      return;
-    }
-    
-    // TODO: error check value
-    const char *sValue = jsonValue;
-    int value = atoi(sValue);
-    
-    pinMode(pin, OUTPUT);
-    analogWrite(pin, value);
+    printlnStatus("written");
   }
   else {
     printlnError("Unknown Command");
@@ -238,8 +232,11 @@ void processCommand(char *buf)
 
 void runScheduledEvents()
 {
+  // hack for atlas scientific mux board...
+  //if (currentSensor != NULL) return;
+  
   // process all events whose timestamps have passed since the last time this function ran
-  for (int index = 0; index < _manager.events.size(); index++) {
+  for (unsigned int index = 0; index < _manager.events.size(); index++) {
     
     // Events are sorted ascending by timestamp, so the first event is the 'soonest' to happen.
     // But if we are nearing clock overflow, events could have timestamps are WAY in the past; we'll skip those events.
@@ -248,7 +245,7 @@ void runScheduledEvents()
     // The internal timer overflows after 50 days, but we can handle this if we assume events aren't scheduled more than 2 weeks in advance.
     // When the timer is nearing overflow, an event's time may overflow, making the current time MUCH LARGER than the event's time.
     long msSinceEvent = millis() - _manager.events[index].date;
-    const long msTwoWeeks = 14 * 24 * 3600 * 1000 + 1;    // number of milliseconds in 2 weeks + 1 ms; must fit in signed long
+    const long msTwoWeeks = (long)14 * 24 * 3600 * 1000 + 1;    // number of milliseconds in 2 weeks + 1 ms; must fit in signed long
     if (msSinceEvent < 0) break;      // event hasn't happened yet; don't need to examine the rest because they are later than this one
     if (msSinceEvent > msTwoWeeks) {  // event happened "so long ago" that the timer must be nearing overflow
       continue;                       // continue looking for an event that either just happened or has yet to happen
@@ -292,40 +289,92 @@ int tokenizeOneWord(char *buf) {
 void handleSerialInput()
 {
   unsigned int numChars;  // always 1...
-  if (numChars = Serial.available())
+  while ((numChars = Serial.available()))
   {
-      char c = Serial.read();
-      
-      // TODO handle buffer overflow better
-      if (ixCommandEnd == sizeof(bufCommand)) {
-        ixCommandEnd = 0;
-        printlnError("command exceeded 255 chars");
-      }
-      
-      // assume end-of-command on carriage return or null terminator
-      if (c == '\n' || c == '\r' || c == '\0') {
-        if (ixCommandEnd == 0) return;  // ignore empty lines
-      
-        // null-terminate and process the command
-        bufCommand[ixCommandEnd] = '\0';
-        processCommand(bufCommand);
-        ixCommandEnd = 0;
-      }
-      else {
-        bufCommand[ixCommandEnd++] = c;
-      }
+    char c = Serial.read();
+    
+    // TODO: handle buffer overflow better
+    if (ixCommandEnd == sizeof(bufCommand)) {
+      ixCommandEnd = 0;
+      printlnError("command exceeded buffer size");
+    }
+    
+    // assume end-of-command on carriage return or null terminator
+    if (c == '\n' || c == '\r' || c == '\0' || c == '~') {
+      if (ixCommandEnd == 0) return;  // ignore empty lines
+    
+      // null-terminate and process the command
+      bufCommand[ixCommandEnd] = '\0';
+      processCommand(bufCommand);
+      ixCommandEnd = 0;
+    }
+    else {
+      bufCommand[ixCommandEnd++] = c;
+    }
   }
 }
 
-
 void createDebugEntries() {
-  SensorEntry &entry = _manager.sensorEntries[0];
-  entry.msMeasurementPeriod = 1000;
-  strcpy(entry.label, "upper temp");
-  entry.func = funcFromSensorID("ENV-TMP");
-  entry.pins[0] = 2;
-  entry.pins[1] = 14;
+  SensorEntry *entry;
+ 
+  entry = &_manager.sensorEntries[0];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "temp");
+  entry->func = funcFromSensorID("ENV-TMP");
+  entry->pins[0] = A3;  //digital for power
+  entry->pins[1] = A2;  //analog for reading
+
+  // Atlas Scientific 4-way mux board
+  const int pinA = A0;
+  const int pinB = A1;
+
+  entry = &_manager.sensorEntries[1];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "DO");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = pinA;
+  entry->pins[1] = pinB;
+  entry->pins[2] = 0;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  
+  entry = &_manager.sensorEntries[2];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "ORP");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = pinA;
+  entry->pins[1] = pinB;
+  entry->pins[2] = 1;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  
+  entry = &_manager.sensorEntries[3];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "EC");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = pinA;
+  entry->pins[1] = pinB;
+  entry->pins[2] = 2;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  
+  entry = &_manager.sensorEntries[4];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "pH");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = pinA;
+  entry->pins[1] = pinB;
+  entry->pins[2] = 3;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+
+  entry = &_manager.sensorEntries[5];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "optical");
+  entry->func = funcFromSensorID("ANALOG");
+  entry->pins[0] = A6;  //digital for power
+  entry->pins[1] = A7;  //analog for reading
+
+  entry = &_manager.sensorEntries[6];
+  entry->msMeasurementPeriod = 0 * 1000;
+  strcpy(entry->label, "flow");
+  entry->func = funcFromSensorID("ANALOG");
+  entry->pins[0] = A4;
 }
+
+#define SensorUART Serial3
 
 void setup()
 {
@@ -333,9 +382,13 @@ void setup()
   ReferenceVoltage = 5.0;
   Serial.begin(38400);
   printlnStatus("AggroSensor version 0 started");
+  
+//#ifdef SensorUART
+  SensorUART.begin(9600);
+//#endif
 
   createDebugEntries();
-  _manager.readFromEEPROM();
+  //_manager.readFromEEPROM();
   
   // take initial measurements and schedule the next ones
   for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) {
@@ -351,3 +404,15 @@ void loop ()
   runScheduledEvents();
   handleSerialInput();
 }
+
+
+/*
+Example commands:
+{setEntry:{index:0,msMeasurementPeriod:0}}~{setEntry:{index:1,msMeasurementPeriod:0}}~
+{setEntry:{index:1,msMeasurementPeriod:1000}}~
+
+{writeD:{pin:38,value:0}}
+{writeD:{pin:38,value:1}}{writeD:{pin:38,value:0}}
+
+{writeA:{pin:11,value:0}}~{writeD:{pin:12,value:0}}
+*/

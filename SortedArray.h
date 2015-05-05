@@ -2,7 +2,7 @@
 
 // array using static-memory that sorts elements in ascending order, smallest item at the beginning
 // assumes T has operator < overloaded
-// uses memcpy, so T should not have a destructor!
+// uses memcpy, so T should not have a destructor!  Wait, how would a destructor matter?
 template <class T, unsigned int SIZE>
 class SortedArray {
 protected:

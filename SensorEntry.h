@@ -46,7 +46,9 @@ struct SensorEntry {
   
   ///////////////////////////////////////////////////////////////////////////////////////////
   // send data message
+  // TODO: may want to not transmit here, instead put in buffer?
   void packageDataMessage(float data) const;
+  void packageDataMessage(const char *data) const;
   
   // print JSON version of this object
   // pass an index value >= 0 if you want an index to be included in the JSON
