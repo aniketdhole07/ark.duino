@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <avr/eeprom.h>
 
-#define SensorUART Serial3
+//#define SensorUART Serial3
 
 // voltage against which analog
 extern float ReferenceVoltage;

@@ -6,6 +6,7 @@
 
 const int NUM_SENSOR_ENTRIES = 8;
 const int NUM_SCHEDULED_EVENTS = NUM_SENSOR_ENTRIES*2;
+const int BOARD_NAME_LEN = 24;
 
 typedef unsigned long Timestamp;
 
@@ -27,8 +28,8 @@ struct SensorScheduledEvent {
 // - priority queue of scheduled sensor reading events
 class SensorManager {
 public:
-  char boardName[24];
-  char boardDescription[80];
+  char boardName[BOARD_NAME_LEN];
+  //char boardDescription[80];        // TODO save to eeprom
   
   // array of info about what sensors are attached
   // an entry is unused if it's func is null

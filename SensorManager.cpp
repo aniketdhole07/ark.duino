@@ -96,28 +96,31 @@ void SensorManager::printEntries() {
 
 // This struct is placed/checked at EEPROM location 0 to make sure EEPROM contains valid settings.
 // When making changes to the EEPROM storage format, version number should be taken into account.
-const char EEPROM_HEADER_STRING[] = {'A', 'g', 'r', 'o', 'S', 'A'};
+const char EEPROM_HEADER_STRING[] = {'H', 'y', 'p', 'h', 'a', '_'};
 const unsigned char EEPROM_MAJOR_VERSION = 0;
 const unsigned char EEPROM_MINOR_VERSION = 0;
 
 struct EEPROMHeader {
   char headerString[sizeof(EEPROM_HEADER_STRING)];
   unsigned short version;
+  
+  char boardName[BOARD_NAME_LEN];
   unsigned short numEntries;
   SensorEntry entries[0];
   
-  EEPROMHeader() {
+  EEPROMHeader(const char *name = NULL) {
     memcpy(headerString, EEPROM_HEADER_STRING, sizeof(headerString));
     version = (EEPROM_MAJOR_VERSION << 8) + EEPROM_MINOR_VERSION;  // little endian
+    if(name) memcpy(boardName, name, sizeof(boardName));
+    else boardName[0] = '\0';
     numEntries = 0;
   }
 };
 
-void SensorManager::writeToEEPROM() {
-  /*
-  EEPROMHeader h;
+void SensorManager::writeToEEPROM() { 
+  EEPROMHeader h(boardName);
   int nextEmptyByte = offsetof(EEPROMHeader, entries);
-  printlnDebug("AggroSensor writing settings to EEPROM...");
+  printlnDebug("Hypha writing settings to EEPROM...");
 
   // successively write every non-empty entry to eeprom and keep count
   for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) {
@@ -128,27 +131,28 @@ void SensorManager::writeToEEPROM() {
   
   // store the header
   memcpyToEEPROM(0, &h, sizeof(h));
-  Serial.print("{debug:\'AggroSensor settings (");
+  Serial.print("{'debug':\'Hypha settings (");
   Serial.print(h.numEntries);
   Serial.print(" entries) written to EEPROM.\'}\n");
-  */
 }
 
 void SensorManager::readFromEEPROM() {
-  /*EEPROMHeader current, test;
+  EEPROMHeader current, test;
   memcpyFromEEPROM(0, &current, sizeof(current));
   
   // check to see if valid settings are saved in EEPROM
   if (memcmp(current.headerString, test.headerString, sizeof(current.headerString))) {
-    printlnDebug("EEPROM does not contain AggroSensor settings.");
+    printlnDebug("EEPROM does not contain Hypha settings.");
     return;
   }
 
   // additionally, check for the current version
   if (current.version != test.version) {
-    printlnError("AggroSensor settings stored in EEPROM have wrong version.");
+    printlnError("Hypha settings stored in EEPROM have wrong version.");
     return;
   }
+  
+  memcpy(boardName, current.boardName, sizeof(boardName));
   
   int i = 0, nextByte = offsetof(EEPROMHeader, entries);
   for (; i < current.numEntries; i++) {
@@ -161,9 +165,8 @@ void SensorManager::readFromEEPROM() {
     sensorEntries[i].setEmpty();
   }
 
-  Serial.print("{status:\'AggroSensor settings (");
+  Serial.print("{'status':\'Hypha settings (");
   Serial.print(numEntriesRead);
   Serial.print(" entries) loaded from EEPROM.\'}\n");
-  */
 };
 

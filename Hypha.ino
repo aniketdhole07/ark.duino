@@ -27,15 +27,11 @@ using namespace ArduinoJson::Parser;
 // globals
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// hack for atlas scientific mux board
-const struct SensorEntry *currentSensor = NULL;
-
-// TODO put in ifdef based on board type
-const int A0_PIN_OFFSET = A0;  // arduino uno
+const int A0_PIN_OFFSET = A0;
 
 SensorManager _manager;
 
-// serial input
+// main serial input
 char bufCommand[300];
 int ixCommandEnd = 0;
 
@@ -150,7 +146,7 @@ void setEntry(ArduinoJson::Parser::JsonValue &pairs)
   }
 }
 
-// Take a JSON object as a string, and parse the command name, and run the corresponding function
+// Take a JSON object as a string, parse the command name, and run the corresponding function
 // Example JSON: "{command: {argument1: 1, argument2: '2'}}"
 void processCommand(char *buf)
 {
@@ -171,7 +167,15 @@ void processCommand(char *buf)
   const char *cmd = it.key();
   JsonValue param = it.value();
   
-  if(!strcmp(cmd, "entries")) {
+  if(!strcmp(cmd, "setName")) {
+    //Serial.println("entries");
+    const char *name = (const char*)(it.value());
+    const int NonNullChars = sizeof(_manager.boardName)-1;
+    strncpy(_manager.boardName, name, NonNullChars);
+    _manager.boardName[NonNullChars] = '\0';
+    _manager.writeToEEPROM();
+  }
+  else if(!strcmp(cmd, "entries")) {
     //Serial.println("entries");
     _manager.printEntries();
   }
@@ -232,9 +236,6 @@ void processCommand(char *buf)
 
 void runScheduledEvents()
 {
-  // hack for atlas scientific mux board...
-  //if (currentSensor != NULL) return;
-  
   // process all events whose timestamps have passed since the last time this function ran
   for (unsigned int index = 0; index < _manager.events.size(); index++) {
     
@@ -374,21 +375,24 @@ void createDebugEntries() {
   entry->pins[0] = A4;
 }
 
-#define SensorUART Serial3
-
 void setup()
 {
   analogReference(DEFAULT);
   ReferenceVoltage = 5.0;
   Serial.begin(38400);
-  printlnStatus("AggroSensor version 0 started");
   
-//#ifdef SensorUART
+#ifdef SensorUART
   SensorUART.begin(9600);
-//#endif
+#endif
 
   createDebugEntries();
-  //_manager.readFromEEPROM();
+  _manager.readFromEEPROM();
+  
+  //printlnStatus("Hypha started - version 0");
+  //print name and version in json object
+  Serial.print(F("{\"init\":{\"firmware\":\"Hypha\",\"version\":0,\"name\":\""));
+  Serial.print(_manager.boardName);
+  Serial.print(F("\"}}\n"));
   
   // take initial measurements and schedule the next ones
   for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) {

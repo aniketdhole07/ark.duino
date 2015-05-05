@@ -1,25 +1,26 @@
 #include "SensorEntry.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// atlas circuits mux reader
+// Atlas circuits mux reader
 
-// using 2 UARTs simultaneously can result in read errors unless you use interrupt functions like below
-// need these global for interrupt to access
-// buf needs to be wiped (read = 0) when switching to a new sensor if previously read sensor misbehaves
+// Using 2 UARTs simultaneously can result in read errors unless you use interrupt routines.
+// Need these global for interrupt to access.
+// buf needs to be wiped (read = 0) when switching to a new sensor if previously read sensor misbehaves.
+// TODO: schedule checking-for-read-completion events in addition to initiate-reading events
 char buf[64];
 unsigned int read = 0;  // number of characters written to buffer
-//const struct SensorEntry *currentSensor = NULL;    //moved to top of file
+const struct SensorEntry *currentSensor = NULL;		// indicates we are blocking waiting for response
 
 // interrupt handler for UART3
 void serialEvent3() {
-  {
+#ifdef SensorUART
     if (currentSensor == NULL) return;
     
     // TODO: handle buffer overflow better
     if (read >= sizeof(buf)-1) {
       read = 0;
       printlnError("reading sensor overflowed buffer");
-      //currentSensor = NULL;
+      currentSensor = NULL;
       return;
     }
     
@@ -27,7 +28,7 @@ void serialEvent3() {
     if (c == '\n') return;      // \r\n sequence will mess up the string logic below
     buf[read++] = c;
     
-    // assume response ends in "*OK\r"
+    // successful response ends in "*OK\r"
     if (c == '\r' && read > 3 && !memcmp("*OK", buf+read-4, 3)) {
       read -= 4;  // remove "*OK\r"
     
@@ -42,21 +43,19 @@ void serialEvent3() {
       //String s = "{\"measurement\":{\"label\":\"pH\",\"datum\":" + String(buf) + "}}";
       //Serial.println(s);
       currentSensor->packageDataMessage(buf);
-      //currentSensor = NULL;
+      currentSensor = NULL;
       read = 0;
     }
     
-    // error
+    // error response ends in "*ER\r"
     if (c == '\r' && read > 3 && !memcmp("*ER", buf+read-4, 3)) {
       // TODO: identify sensor
       printlnError("error reading sensor");
-      //currentSensor = NULL;
+      currentSensor = NULL;
       read = 0;
       return;
     }
-  }
-  
-  return;
+#endif
 }
 
 int read_Atlas_Circuit(const struct SensorEntry *entry)
@@ -64,8 +63,8 @@ int read_Atlas_Circuit(const struct SensorEntry *entry)
 /*#ifndef SensorUART
   return -1;
 #else*/
-  char buf[64];
-  unsigned int read = 0;  // number of characters written to buffer
+  //char buf[64];
+  //unsigned int read = 0;  // number of characters written to buffer
   
   // switch the mux to point the the right sensor
   char muxAddress = entry->pins[2];
@@ -79,8 +78,21 @@ int read_Atlas_Circuit(const struct SensorEntry *entry)
  
   // request a reading
   currentSensor = entry;
+#ifdef SensorUART
   SensorUART.print("R\r");
+#endif
 
+  // block until interrupt routine receives entire response or time out occurs
+  while(true) {  
+    if (currentSensor == NULL) return 0;
+	
+	// don't loop infinitely
+    if(millis() - startTime > TimeOut) {
+	  currentSensor = NULL;
+      printlnError("sensor timed out");    // TODO: identify sensor
+      return -1;
+    }
+  }
   return 0;
 /*
   // wait for response over serial
