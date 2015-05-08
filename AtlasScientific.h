@@ -1,61 +1,54 @@
 #include "SensorEntry.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Atlas circuits mux reader
+// atlas circuits mux reader
 
-// Using 2 UARTs simultaneously can result in read errors unless you use interrupt routines.
-// Need these global for interrupt to access.
-// buf needs to be wiped (read = 0) when switching to a new sensor if previously read sensor misbehaves.
-// TODO: schedule checking-for-read-completion events in addition to initiate-reading events
+// using 2 UARTs simultaneously can result in read errors unless you use interrupt functions like below
+// need these global for interrupt to access
+// buf needs to be wiped (read = 0) when switching to a new sensor if previously read sensor misbehaves
 char buf[64];
 unsigned int read = 0;  // number of characters written to buffer
-const struct SensorEntry *currentSensor = NULL;		// indicates we are blocking waiting for response
+volatile const struct SensorEntry *currentSensor = NULL;    //moved to top of file
 
 // interrupt handler for UART3
 void serialEvent3() {
-#ifdef SensorUART
+  {
     if (currentSensor == NULL) return;
     
     // TODO: handle buffer overflow better
     if (read >= sizeof(buf)-1) {
-      read = 0;
       printlnError("reading sensor overflowed buffer");
+      read = 0;
       currentSensor = NULL;
       return;
     }
     
     char c = SensorUART.read();
-    if (c == '\n') return;      // \r\n sequence will mess up the string logic below
+    if (c == '\r') return;      // only pay attention to \n in \r\n sequences
     buf[read++] = c;
     
-    // successful response ends in "*OK\r"
-    if (c == '\r' && read > 3 && !memcmp("*OK", buf+read-4, 3)) {
+    // assume response ends in "*OK\r"
+    if (c == '\n' && read > 3 && !memcmp("*OK", buf+read-4, 3)) {
       read -= 4;  // remove "*OK\r"
     
       // null-terminate and process the command
       buf[read] = '\0';
-    
-      //replace newlines with spaces
-      for (int i = 0; i < sizeof(buf)-1 && buf[i] != '\0'; i++) {
-        if (buf[i] == '\r' || buf[i] == '\n') buf[i] = ' ';
-      }
+      read = 0;
+      currentSensor = NULL;
       
       //String s = "{\"measurement\":{\"label\":\"pH\",\"datum\":" + String(buf) + "}}";
       //Serial.println(s);
-      currentSensor->packageDataMessage(buf);
-      currentSensor = NULL;
-      read = 0;
     }
     
-    // error response ends in "*ER\r"
-    if (c == '\r' && read > 3 && !memcmp("*ER", buf+read-4, 3)) {
+    // error
+    if (c == '\n' && read > 3 && !memcmp("*ER", buf+read-4, 3)) {
       // TODO: identify sensor
       printlnError("error reading sensor");
-      currentSensor = NULL;
       read = 0;
+      currentSensor = NULL;
       return;
     }
-#endif
+  }
 }
 
 int read_Atlas_Circuit(const struct SensorEntry *entry)
@@ -63,8 +56,8 @@ int read_Atlas_Circuit(const struct SensorEntry *entry)
 /*#ifndef SensorUART
   return -1;
 #else*/
-  //char buf[64];
-  //unsigned int read = 0;  // number of characters written to buffer
+  char buf[64];
+  unsigned int read = 0;  // number of characters written to buffer
   
   // switch the mux to point the the right sensor
   char muxAddress = entry->pins[2];
@@ -78,21 +71,24 @@ int read_Atlas_Circuit(const struct SensorEntry *entry)
  
   // request a reading
   currentSensor = entry;
-#ifdef SensorUART
   SensorUART.print("R\r");
-#endif
 
-  // block until interrupt routine receives entire response or time out occurs
-  while(true) {  
-    if (currentSensor == NULL) return 0;
-	
-	// don't loop infinitely
+  while(true) {
+    if (currentSensor == NULL) return 0;  //ISR should have sent data packet already
+  
+    // don't loop infinitely
     if(millis() - startTime > TimeOut) {
-	  currentSensor = NULL;
       printlnError("sensor timed out");    // TODO: identify sensor
       return -1;
     }
   }
+
+  //replace newlines with spaces
+  for (int i = 0; i < sizeof(buf)-1 && buf[i] != '\0'; i++) {
+    if (buf[i] == '\r' || buf[i] == '\n') buf[i] = ' ';
+  }
+  
+  entry->packageDataMessage(buf);
   return 0;
 /*
   // wait for response over serial

@@ -44,6 +44,7 @@ public:
 public:
   SensorManager() {
     // sensorEntries have a constructor
+    strcpy(boardName, "none");
   }
   
   // storing and loading settings when powered off

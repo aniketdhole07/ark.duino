@@ -118,6 +118,7 @@ struct EEPROMHeader {
 };
 
 void SensorManager::writeToEEPROM() { 
+#ifdef USE_EEPROM
   EEPROMHeader h(boardName);
   int nextEmptyByte = offsetof(EEPROMHeader, entries);
   printlnDebug("Hypha writing settings to EEPROM...");
@@ -134,9 +135,11 @@ void SensorManager::writeToEEPROM() {
   Serial.print("{'debug':\'Hypha settings (");
   Serial.print(h.numEntries);
   Serial.print(" entries) written to EEPROM.\'}\n");
+#endif
 }
 
 void SensorManager::readFromEEPROM() {
+#ifdef USE_EEPROM
   EEPROMHeader current, test;
   memcpyFromEEPROM(0, &current, sizeof(current));
   
@@ -168,5 +171,6 @@ void SensorManager::readFromEEPROM() {
   Serial.print("{'status':\'Hypha settings (");
   Serial.print(numEntriesRead);
   Serial.print(" entries) loaded from EEPROM.\'}\n");
+ #endif
 };
 

@@ -11,6 +11,7 @@
 #include "DFRobot_pH.h"
 #include "ManyLabs_pH.h"
 #include "AtlasScientific.h"
+#include "HallSensor.h"
 //#include "profiles/DS18B20.h"
 
 // pins 0 and 1 are mux 'selector' pins (0=B, 1=B)
@@ -22,6 +23,7 @@ const SensorFunctionMapEntry SensorManager::sensorFunctionMap[] = {
   {"ENV-TMP",         read_tmp_env},
   {"DFROBOT-PH",      read_DFRobot_pH},
   {"MANYLABS-PH",     read_ManyLabs_pH},
-  {"ATLAS-CIRCUIT",   read_Atlas_Circuit}
+  {"ATLAS-CIRCUIT",   read_Atlas_Circuit},
+  {"HALL",            readHallSensor}
 };
 
