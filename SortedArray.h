@@ -11,13 +11,14 @@ protected:
   
 public:
   SortedArray() {
-    count = 0;
+    clear();
   }
 
   unsigned int size() { return count; }
   bool isFull() { return count == SIZE; }
   int isEmpty() { return count == 0; }
-
+  void clear() { count = 0; }
+  
   // insert in the correct place in the array
   // TODO could do binary search
   bool add(T &e) {

@@ -29,11 +29,84 @@ using namespace ArduinoJson::Parser;
 
 const int A0_PIN_OFFSET = A0;
 
+// main serial input
+char bufCommand[255];
+int ixCommandEnd = 0;
+
+JsonParser<20> jsonParser;
+
+boolean gSensorsEnabled = false;    // temp hack for turning all sensors off or on at once
+
 SensorManager _manager;
 
-// main serial input
-char bufCommand[300];
-int ixCommandEnd = 0;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// sensor entires for quick debugging
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void createDebugEntries() {
+  SensorEntry *entry;
+  const int PERIOD = 7000;
+
+  entry = &_manager.sensorEntries[0];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "temp");
+  entry->func = funcFromSensorID("ENV-TMP");
+  entry->pins[0] = A3;  //digital for power
+  entry->pins[1] = A2;  //analog for reading
+
+#ifdef SensorUART
+// if we don't have a separate UART, probably don't need these entries
+
+  entry = &_manager.sensorEntries[1];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "optical");
+  entry->func = funcFromSensorID("ANALOG");
+  entry->pins[0] = A6;  //digital for power
+  entry->pins[1] = A7;  //analog for reading
+
+  entry = &_manager.sensorEntries[2];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "flow");
+  entry->func = funcFromSensorID("ANALOG");
+  entry->pins[0] = A4;
+
+  // Atlas Scientific 4-way mux board
+  const int pinA = A0;
+  const int pinB = A1;
+
+  entry = &_manager.sensorEntries[3];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "DO");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = 0;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  entry->pins[1] = pinA;
+  entry->pins[2] = pinB;
+  
+  entry = &_manager.sensorEntries[4];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "ORP");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = 1;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  entry->pins[1] = pinA;
+  entry->pins[2] = pinB;
+  
+  entry = &_manager.sensorEntries[5];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "EC");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = 2;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  entry->pins[1] = pinA;
+  entry->pins[2] = pinB;
+
+  entry = &_manager.sensorEntries[6];
+  entry->msMeasurementPeriod = PERIOD;
+  strcpy(entry->label, "pH");
+  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
+  entry->pins[0] = 3;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
+  entry->pins[1] = pinA;
+  entry->pins[2] = pinB;
+#endif
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // main functions
@@ -47,6 +120,10 @@ void measureAndSchedule(int index) {
     // error
   }
   _manager.schedule(entry);
+}
+
+void measureAndSchedule() {
+  for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) measureAndSchedule(i);
 }
 
 // stores pin number in result, or -1 if pin number was empty
@@ -100,6 +177,15 @@ void setEntry(ArduinoJson::Parser::JsonValue &pairs)
     strcpy(entry.label, label);
   }
   
+  JsonValue enabled = pairs["enabled"];
+  if (enabled.success()) {
+    if (false) {  // TODO test for valid true/false/1/0?
+      printlnError("enabled should be 1 or 0");
+      return;
+    }
+    entry.enable(bool(enabled));
+  }
+  
   JsonValue sensorID = pairs["sensorID"];
   if (sensorID.success()) {
     entry.func = funcFromSensorID((char*)sensorID);
@@ -122,7 +208,7 @@ void setEntry(ArduinoJson::Parser::JsonValue &pairs)
   JsonValue pins = pairs["pins"];
   if (pins.success()) {
     if (pins[NUM_PINS].success()) {
-      printlnError("only up to 4 pins are supported");
+      printlnError("number of pins exceeded");
       return;
     }
     for (int i = 0; i < NUM_PINS; i++) {
@@ -135,31 +221,27 @@ void setEntry(ArduinoJson::Parser::JsonValue &pairs)
   
   // if something important changed, purge events previously scheduled and schedule new events  
   bool reschedule = (entry.msMeasurementPeriod != managerEntry.msMeasurementPeriod || entry.func != managerEntry.func);
-
+  bool previousState = managerEntry.isEnabled();
+  
   memcpy(&managerEntry, &entry, sizeof(entry));
   _manager.writeToEEPROM();
 
-  if (reschedule)
-  {
-    _manager.removeEvents(index);
-    measureAndSchedule(index);
-  }
+  if (reschedule || entry.isDisabled()) _manager.removeEvents(index);
+  if ((previousState == false && entry.isEnabled()) || (reschedule && entry.isEnabled())) measureAndSchedule(index);
 }
 
 // Take a JSON object as a string, parse the command name, and run the corresponding function
 // Example JSON: "{command: {argument1: 1, argument2: '2'}}"
 void processCommand(char *buf)
 {
-  char tmp[300];
-  memcpy(tmp, buf, 300);
+  //char tmp[300];
+  //memcpy(tmp, buf, 300);
   
   // parses JSON 'inline' by modifying buf
-  // the next line can easily cause stack overflow
-  JsonParser<24> parser;
-  JsonObject root = parser.parse(buf);
+  JsonObject root = jsonParser.parse(buf);
   if (!root.success()) {
-    printlnError("parsing json");
-    Serial.println(tmp);
+    printlnError("parsing json; perhaps command too long");
+    //Serial.println(tmp);
     return;
   }
   
@@ -174,6 +256,17 @@ void processCommand(char *buf)
     strncpy(_manager.boardName, name, NonNullChars);
     _manager.boardName[NonNullChars] = '\0';
     _manager.writeToEEPROM();
+  }
+  else if(!strcmp(cmd, "createDebug")) {
+    createDebugEntries();
+    measureAndSchedule();
+  }
+  else if(!strcmp(cmd, "sensors")) {
+    boolean state = boolean(it.value());
+    if (state == gSensorsEnabled) return;
+    gSensorsEnabled = state;
+    if (state) measureAndSchedule();
+    else _manager.removeAllEvents();
   }
   else if(!strcmp(cmd, "entries")) {
     //Serial.println("entries");
@@ -246,7 +339,7 @@ void runScheduledEvents()
     // The internal timer overflows after 50 days, but we can handle this if we assume events aren't scheduled more than 2 weeks in advance.
     // When the timer is nearing overflow, an event's time may overflow, making the current time MUCH LARGER than the event's time.
     long msSinceEvent = millis() - _manager.events[index].date;
-    const long msTwoWeeks = (long)14 * 24 * 3600 * 1000 + 1;    // number of milliseconds in 2 weeks + 1 ms; must fit in signed long
+    const long msTwoWeeks = (long)14 * 24 * 3601000 + 1;    // number of milliseconds in 2 weeks + 1 ms; must fit in signed long
     if (msSinceEvent < 0) break;      // event hasn't happened yet; don't need to examine the rest because they are later than this one
     if (msSinceEvent > msTwoWeeks) {  // event happened "so long ago" that the timer must be nearing overflow
       continue;                       // continue looking for an event that either just happened or has yet to happen
@@ -315,66 +408,6 @@ void handleSerialInput()
   }
 }
 
-void createDebugEntries() {
-  SensorEntry *entry;
- 
-  entry = &_manager.sensorEntries[0];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "temp");
-  entry->func = funcFromSensorID("ENV-TMP");
-  entry->pins[0] = A3;  //digital for power
-  entry->pins[1] = A2;  //analog for reading
-
-  // Atlas Scientific 4-way mux board
-  const int pinA = A0;
-  const int pinB = A1;
-
-  entry = &_manager.sensorEntries[1];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "DO");
-  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
-  entry->pins[0] = pinA;
-  entry->pins[1] = pinB;
-  entry->pins[2] = 0;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
-  
-  entry = &_manager.sensorEntries[2];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "ORP");
-  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
-  entry->pins[0] = pinA;
-  entry->pins[1] = pinB;
-  entry->pins[2] = 1;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
-  
-  entry = &_manager.sensorEntries[3];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "EC");
-  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
-  entry->pins[0] = pinA;
-  entry->pins[1] = pinB;
-  entry->pins[2] = 2;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
-  
-  entry = &_manager.sensorEntries[4];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "pH");
-  entry->func = funcFromSensorID("ATLAS-CIRCUIT");
-  entry->pins[0] = pinA;
-  entry->pins[1] = pinB;
-  entry->pins[2] = 3;    // this is actually the 'address' to apply bitwise to the previous 2 'selector' pins for this sensor
-
-  entry = &_manager.sensorEntries[5];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "optical");
-  entry->func = funcFromSensorID("ANALOG");
-  entry->pins[0] = A6;  //digital for power
-  entry->pins[1] = A7;  //analog for reading
-
-  entry = &_manager.sensorEntries[6];
-  entry->msMeasurementPeriod = 0 * 1000;
-  strcpy(entry->label, "flow");
-  entry->func = funcFromSensorID("ANALOG");
-  entry->pins[0] = A4;
-}
-
 void setup()
 {
   analogReference(DEFAULT);
@@ -394,9 +427,9 @@ void setup()
   Serial.print(_manager.boardName);
   Serial.print(F("\"}}\n"));
   
-  // take initial measurements and schedule the next ones
-  for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) {
-    measureAndSchedule(i);
+  if (gSensorsEnabled) {
+    // take initial measurements and schedule the next ones
+    measureAndSchedule();
   }
 }
 

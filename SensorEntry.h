@@ -7,12 +7,14 @@
 ////////////////////////////////////////////////////////////////////////////////////
 
 const int NUM_PINS = 4;
+typedef char PinType;
 
 // All the info for a sensor plugged into the arduino
 struct SensorEntry {
-  char label[16];                       // label applied to data from this sensor
+  char label[15];                       // label applied to data from this sensor
+  bool disabled;                        // sensor is on by default
   unsigned long msMeasurementPeriod;    // measurement period in milliseconds
-  char pins[NUM_PINS];                  // some number of pins used by the sensor
+  PinType pins[NUM_PINS];               // some number of pins used by the sensor
                                         // (order is dictated the sensor's read function)
   //char sensorID[MAX_SENSOR_ID_LENGTH];  // the "class" type
   SensorMeasurementFunc func;           // the sensor "type", this will be a function in gSensorFuncMap
@@ -25,6 +27,7 @@ struct SensorEntry {
   
   void setEmpty() {
     func = NULL;
+    disabled = false;
     label[0] = '\0';
     msMeasurementPeriod = 0;
     memset(pins, -1, sizeof(pins));
@@ -34,11 +37,19 @@ struct SensorEntry {
     return func == NULL;
   }
   
-  // TODO add a separate flag for enabled!
-  bool isDisabled() const {
-    return msMeasurementPeriod == 0;
+  void enable(bool state) {
+    disabled = !state;
   }
-
+  
+  // TODO add a separate flag for enabled!
+  bool isEnabled() const {
+    return !disabled;
+  }
+  
+  bool isDisabled() const {
+    return disabled;
+  }
+  
   //////////////////////////////////////////////////////////////////////////////////////////
   // Use these 2 methods because we might change how an entry's sensor is identified
   const char* getSensorID() const;

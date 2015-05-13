@@ -5,8 +5,8 @@
 #pragma once
 
 const int NUM_SENSOR_ENTRIES = 8;
-const int NUM_SCHEDULED_EVENTS = NUM_SENSOR_ENTRIES*2;
-const int BOARD_NAME_LEN = 24;
+const int NUM_SCHEDULED_EVENTS = NUM_SENSOR_ENTRIES * 3/2;
+const int BOARD_NAME_LEN = 16;
 
 typedef unsigned long Timestamp;
 
@@ -44,7 +44,7 @@ public:
 public:
   SensorManager() {
     // sensorEntries have a constructor
-    strcpy(boardName, "none");
+    strcpy(boardName, "Kefir");
   }
   
   // storing and loading settings when powered off
@@ -65,5 +65,6 @@ public:
   
   // when a sensor entry is changed or deleted, remove its events
   void removeEvents(int index);
+  void removeAllEvents();
 };
 

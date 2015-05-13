@@ -43,7 +43,7 @@ void SensorEntry::packageDataMessage(float data) const {
   Serial.print(label);
   Serial.print(F("\",\"datum\":"));
   Serial.print(data);
-  Serial.println("}}");
+  Serial.println(F("}}"));
 }
 
 void SensorEntry::packageDataMessage(const char *data) const {
@@ -51,7 +51,7 @@ void SensorEntry::packageDataMessage(const char *data) const {
   Serial.print(label);
   Serial.print(F("\",\"datum\":\""));
   Serial.print(data);
-  Serial.println("\"}}");
+  Serial.println(F("\"}}"));
 }
 
 void SensorEntry::print(int index) const {
@@ -72,6 +72,8 @@ void SensorEntry::print(int index) const {
   Serial.print(label);
   Serial.print(F("\",\"sensorID\":\""));
   Serial.print(getSensorID());
+  Serial.print(F("\",\"disabled\":\""));
+  Serial.print(isDisabled());
   Serial.print(F("\",\"msMeasurementPeriod\":"));
   Serial.print(msMeasurementPeriod);
   Serial.print(F(",\"pins\":["));
@@ -80,5 +82,5 @@ void SensorEntry::print(int index) const {
     if (i != 0) Serial.print(',');
     Serial.print((int)pins[i]);
   }
-  Serial.print("]}");
+  Serial.print(F("]}"));
 }

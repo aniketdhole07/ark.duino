@@ -80,6 +80,10 @@ void SensorManager::removeEvents(int index) {
   }
 }
 
+void SensorManager::removeAllEvents() {
+  events.clear();
+}
+
 void SensorManager::printEntries() {
   Serial.print(F("{\"SensorEntries\":["));
   for (int i = 0; i < NUM_SENSOR_ENTRIES; i++) {
@@ -87,7 +91,7 @@ void SensorManager::printEntries() {
     if (i != 0) Serial.print(',');
     printEntry(i);
   }
-  Serial.print("]}\n");
+  Serial.print(F("]}\n"));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,9 +136,10 @@ void SensorManager::writeToEEPROM() {
   
   // store the header
   memcpyToEEPROM(0, &h, sizeof(h));
-  Serial.print("{'debug':\'Hypha settings (");
-  Serial.print(h.numEntries);
-  Serial.print(" entries) written to EEPROM.\'}\n");
+  printlnStatus("Settings written to EEPROM.");
+  //Serial.print("{'debug':\'Hypha settings (");
+  //Serial.print(h.numEntries);
+  //Serial.print(" entries) written to EEPROM.\'}\n");
 #endif
 }
 
@@ -168,9 +173,10 @@ void SensorManager::readFromEEPROM() {
     sensorEntries[i].setEmpty();
   }
 
-  Serial.print("{'status':\'Hypha settings (");
-  Serial.print(numEntriesRead);
-  Serial.print(" entries) loaded from EEPROM.\'}\n");
+  printlnStatus("Settings read from EEPROM.");
+  //Serial.print("{'status':\'Hypha settings (");
+  //Serial.print(numEntriesRead);
+  //Serial.print(" entries) loaded from EEPROM.\'}\n");
  #endif
 };
 

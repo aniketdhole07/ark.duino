@@ -12,7 +12,7 @@ class RingBuffer {
   
 public:
   RingBuffer() {
-    start = count = 0;
+    clear();
   }
  
   bool isFull() {
@@ -21,6 +21,10 @@ public:
  
   int isEmpty() {
     return count == 0;
+  }
+  
+  void clear() {
+    start = count = 0;
   }
   
   // Allocates the next empty position in the queue and returns its address (for you to fill).
